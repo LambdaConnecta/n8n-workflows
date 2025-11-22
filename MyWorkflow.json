@@ -1,0 +1,102 @@
+{
+  "name": "LambdaConnecta AI Marketing & Sales Full Workflow",
+  "nodes": [
+    {
+      "id": "trigger_lead",
+      "type": "n8n-nodes-base.webhook",
+      "name": "Lead Capture Webhook",
+      "parameters": {
+        "path": "lead-capture",
+        "method": "POST"
+      }
+    },
+    {
+      "id": "chatgpt_qualification",
+      "type": "n8n-nodes-base.chatGPT",
+      "name": "Lead Qualification AI",
+      "parameters": {
+        "prompt": "You are LambdaConnecta, an AI sales assistant. A lead has submitted the following info:\nName: {{lead_name}}\nCompany: {{company}}\nEmail: {{email}}\nPhone: {{phone}}\nMessage/Interest: {{lead_message}}\n\nPlease:\n1. Score the lead as Hot, Warm, or Cold based on urgency, budget, and fit.\n2. Summarize key points in 2-3 sentences.\n3. Suggest the best next step (schedule call, send info, nurture).\n\nReturn output as JSON: {\n  \"score\": \"\",\n  \"summary\": \"\",\n  \"next_step\": \"\"\n}"      },
+      "connections": {
+        "main": [[{"node": "branch_lead_score","type": "main","index": 0}]]
+      }
+    },
+    {
+      "id": "branch_lead_score",
+      "type": "n8n-nodes-base.if",
+      "name": "Branch by Lead Score",
+      "parameters": {
+        "conditions": {"string":[{"value1":"={{$json[\"score\"]}}","operation":"equals","value2":"Hot"}]}
+      },
+      "connections": {
+        "true": [[{"node": "send_email","type": "main","index": 0},{"node": "send_sms","type": "main","index":1},{"node": "update_crm","type":"main","index":2}]],
+        "false": [[{"node": "send_nurture_email","type": "main","index": 0},{"node": "update_crm","type": "main","index":1}]]
+      }
+    },
+    {
+      "id": "send_email",
+      "type": "n8n-nodes-base.emailSend",
+      "name": "Send Personalized Email",
+      "parameters": {"toEmail":"={{$json[\"email\"]}}","subject":"Boost Your [Metric] with [Company]","text":"Hi {{$json[\"lead_name\"]}},\n\nI noticed your interest in {{$json[\"lead_message\"]}}. Here’s how we can help you achieve [Benefit].\n\nSchedule a call here: [link]"}
+    },
+    {
+      "id": "send_sms",
+      "type": "n8n-nodes-base.twilio",
+      "name": "Send SMS",
+      "parameters": {"to":"={{$json[\"phone\"]}}","message":"Hi {{$json[\"lead_name\"]}}, MarkoAI here. Are you ready to explore how [product/service] can help [pain point]? Schedule here: [link]"}
+    },
+    {
+      "id": "send_nurture_email",
+      "type": "n8n-nodes-base.emailSend",
+      "name": "Send Nurture Email",
+      "parameters": {"toEmail":"={{$json[\"email\"]}}","subject":"Learn More About [Product/Service]","text":"Hi {{$json[\"lead_name\"]}},\n\nThanks for your interest in [Product/Service]. Here’s some info to help you explore further: [link]"}
+    },
+    {
+      "id": "update_crm",
+      "type": "n8n-nodes-base.hubspot",
+      "name": "Update CRM",
+      "parameters": {"operation":"createOrUpdateContact","email":"={{$json[\"email\"]}}","properties":{"firstname":"={{$json[\"lead_name\"]}}","company":"={{$json[\"company\"]}}","lead_score":"={{$json[\"score\"]}}","notes":"={{$json[\"summary\"]}}"}}
+    },
+    {
+      "id": "log_to_sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "name": "Log Leads & Engagement",
+      "parameters": {"operation":"append","sheetId":"[GOOGLE_SHEET_ID]","range":"Leads!A1","values":["={{$json[\"lead_name\"]}}","={{$json[\"company\"]}}","={{$json[\"email\"]}}","={{$json[\"phone\"]}}","={{$json[\"score\"]}}","={{$json[\"summary\"]}}","={{$json[\"next_step\"]}}","={{$json[\"email_sent\"]}}","={{$json[\"sms_sent\"]}}","={{$now}}"]}
+    },
+    {
+      "id": "cron_weekly_report",
+      "type": "n8n-nodes-base.cron",
+      "name": "Weekly Summary Report",
+      "parameters": {"triggerTimes":{"item":true,"hour":"9","minute":"0","weekDay":["1"]}}
+    },
+    {
+      "id": "generate_report",
+      "type": "n8n-nodes-base.chatGPT",
+      "name": "Generate Weekly Report",
+      "parameters": {"prompt":"You are LambdaConnecta. Summarize the weekly marketing & sales performance from the data: {{$json}}. Include total leads, Hot/Warm/Cold distribution, emails/SMS sent, meetings scheduled, and engagement metrics. Output as a concise report for managers."}
+    },
+    {
+      "id": "send_report_email",
+      "type": "n8n-nodes-base.emailSend",
+      "name": "Send Weekly Report Email",
+      "parameters": {"toEmail":"[MANAGER_EMAIL]","subject":"Weekly Marketing & Sales Summary","text":"={{$json[\"report\"]}}"}
+    },
+    {
+      "id": "generate_social_post",
+      "type": "n8n-nodes-base.chatGPT",
+      "name": "AI Social Post Generator",
+      "parameters": {"prompt":"Generate an engaging, professional social media post about our product/service [Product Name]. Include CTA and hashtags. Tailor for [Platform: LinkedIn/Twitter/Facebook]."}
+    },
+    {
+      "id": "schedule_social_post",
+      "type": "n8n-nodes-base.buffer",
+      "name": "Schedule Social Media Post",
+      "parameters": {"content":"={{$json[\"post\"]}}","profileIds":["[BUFFER_PROFILE_ID]"]}
+    },
+    {
+      "id": "log_social_engagement",
+      "type": "n8n-nodes-base.googleSheets",
+      "name": "Log Social Engagement Metrics",
+      "parameters": {"operation":"append","sheetId":"[GOOGLE_SHEET_ID]","range":"Social!A1","values":["={{$json[\"platform\"]}}","={{$json[\"post_id\"]}}","={{$json[\"likes\"]}}","={{$json[\"comments\"]}}","={{$json[\"clicks\"]}}","={{$now}}"]}
+    }
+  ]
+}
